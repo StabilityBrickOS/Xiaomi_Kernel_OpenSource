@@ -1,4 +1,4 @@
-name: Universal Kernel Builder (Gold Fork)
+name: Universal Kernel Builder
 
 on:
   workflow_dispatch:
@@ -27,13 +27,11 @@ jobs:
 
       - name: Download Compiler
         run: |
-          # Clone the compiler from the provided URL
           git clone --depth=1 ${{ github.event.inputs.compiler_url }} clang-bin
 
       - name: Checkout Your Fork Source
         uses: actions/checkout@v4
         with:
-          # No repository field means it uses the current repository (your fork)
           ref: ${{ github.event.inputs.kernel_ref }}
           path: kernel-source
 
@@ -41,7 +39,6 @@ jobs:
         run: |
           cd kernel-source
           
-          # Setup toolchain paths
           CLANG_DIR=$(pwd)/../clang-bin/bin
           export PATH=$PATH:$CLANG_DIR
           
@@ -49,7 +46,6 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_COMPILER_STRING="Custom Clang (Fork Build)"
           
-          # Global build parameters for stability
           MAKE_ARGS=(
               ARCH=arm64 \
               CC="$CLANG_DIR/clang" \
@@ -69,7 +65,6 @@ jobs:
               DTC_EXT=$(which dtc)
           )
 
-          # Defconfig search logic across different directories
           DEFCONFIG=${{ github.event.inputs.custom_defconfig }}
           if [ -f arch/arm64/configs/vendor/$DEFCONFIG ]; then
               CONF=vendor/$DEFCONFIG
@@ -84,10 +79,8 @@ jobs:
           
           echo "Starting build with config: $CONF"
           
-          # 1. Apply the configuration
           make O=out "${MAKE_ARGS[@]}" $CONF
 
-          # 2. Main compilation process
           make -j$(nproc --all) O=out "${MAKE_ARGS[@]}"
 
       - name: Upload Kernel Image

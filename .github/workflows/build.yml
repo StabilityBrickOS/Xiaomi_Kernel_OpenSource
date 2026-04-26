@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       kernel_ref:
-        description: 'Fork branch (e.g., ares-r-oss or gold-s-oss)'
+        description: 'Branch from your fork (e.g., ares-r-oss or gold-s-oss)'
         required: true
         default: 'gold-s-oss'
       compiler_url:
@@ -27,9 +27,9 @@ jobs:
 
       - name: Download Compiler
         run: |
-          git clone --depth=1 ${{ github.event.inputs.compiler_url }} clang-bin
+          git clone --depth=1 ${{ github.event.inputs.compiler_url }} $GITHUB_WORKSPACE/clang-bin
 
-      - name: Checkout Your Fork Source
+      - name: Checkout Fork Source
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.kernel_ref }}
@@ -37,10 +37,10 @@ jobs:
 
       - name: Build Kernel
         run: |
-          cd kernel-source
+          cd $GITHUB_WORKSPACE/kernel-source || { echo "Kernel source directory not found!"; exit 1; }
           
-          CLANG_DIR=$(pwd)/../clang-bin/bin
-          export PATH=$PATH:$CLANG_DIR
+          CLANG_DIR=$GITHUB_WORKSPACE/clang-bin/bin
+          export PATH=$CLANG_DIR:$PATH
           
           export ARCH=arm64
           export SUBARCH=arm64
@@ -48,14 +48,14 @@ jobs:
           
           MAKE_ARGS=(
               ARCH=arm64 \
-              CC="$CLANG_DIR/clang" \
-              LD="$CLANG_DIR/ld.lld" \
-              AR="$CLANG_DIR/llvm-ar" \
-              NM="$CLANG_DIR/llvm-nm" \
-              OBJCOPY="$CLANG_DIR/llvm-objcopy" \
-              OBJDUMP="$CLANG_DIR/llvm-objdump" \
-              STRIP="$CLANG_DIR/llvm-strip" \
-              OBJSIZE="$CLANG_DIR/llvm-size" \
+              CC="clang" \
+              LD="ld.lld" \
+              AR="llvm-ar" \
+              NM="llvm-nm" \
+              OBJCOPY="llvm-objcopy" \
+              OBJDUMP="llvm-objdump" \
+              STRIP="llvm-strip" \
+              OBJSIZE="llvm-size" \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
               LLVM=1 \
@@ -72,13 +72,14 @@ jobs:
               CONF=$DEFCONFIG
           else
               echo "!!! Error: Config $DEFCONFIG not found!"
-              echo "Available configs in arch/arm64/configs/:"
+              echo "List of available configs:"
               find arch/arm64/configs/ -name "*defconfig"
               exit 1
           fi
           
-          echo "Starting build with config: $CONF"
+          echo "Starting build process with config: $CONF"
           
+          mkdir -p out
           make O=out "${MAKE_ARGS[@]}" $CONF
 
           make -j$(nproc --all) O=out "${MAKE_ARGS[@]}"

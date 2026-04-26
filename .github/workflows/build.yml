@@ -1,0 +1,101 @@
+name: Universal Kernel Builder (Gold Fork)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: 'Fork branch (e.g., ares-r-oss or gold-s-oss)'
+        required: true
+        default: 'gold-s-oss'
+      compiler_url:
+        description: 'Compiler URL (Proton, ZyC, etc. via .git)'
+        required: true
+        default: 'https://github.com/kdrag0n/proton-clang.git'
+      custom_defconfig:
+        description: 'Defconfig name (gold_defconfig, ares_defconfig)'
+        required: true
+        default: 'gold_defconfig'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential python3 git zip unzip curl wget libssl-dev flex bison libelf-dev lld llvm libssl-dev binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+
+      - name: Download Compiler
+        run: |
+          # Clone the compiler from the provided URL
+          git clone --depth=1 ${{ github.event.inputs.compiler_url }} clang-bin
+
+      - name: Checkout Your Fork Source
+        uses: actions/checkout@v4
+        with:
+          # No repository field means it uses the current repository (your fork)
+          ref: ${{ github.event.inputs.kernel_ref }}
+          path: kernel-source
+
+      - name: Build Kernel
+        run: |
+          cd kernel-source
+          
+          # Setup toolchain paths
+          CLANG_DIR=$(pwd)/../clang-bin/bin
+          export PATH=$PATH:$CLANG_DIR
+          
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_COMPILER_STRING="Custom Clang (Fork Build)"
+          
+          # Global build parameters for stability
+          MAKE_ARGS=(
+              ARCH=arm64 \
+              CC="$CLANG_DIR/clang" \
+              LD="$CLANG_DIR/ld.lld" \
+              AR="$CLANG_DIR/llvm-ar" \
+              NM="$CLANG_DIR/llvm-nm" \
+              OBJCOPY="$CLANG_DIR/llvm-objcopy" \
+              OBJDUMP="$CLANG_DIR/llvm-objdump" \
+              STRIP="$CLANG_DIR/llvm-strip" \
+              OBJSIZE="$CLANG_DIR/llvm-size" \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              HOSTCC=gcc \
+              HOSTCXX=g++ \
+              DTC_EXT=$(which dtc)
+          )
+
+          # Defconfig search logic across different directories
+          DEFCONFIG=${{ github.event.inputs.custom_defconfig }}
+          if [ -f arch/arm64/configs/vendor/$DEFCONFIG ]; then
+              CONF=vendor/$DEFCONFIG
+          elif [ -f arch/arm64/configs/$DEFCONFIG ]; then
+              CONF=$DEFCONFIG
+          else
+              echo "!!! Error: Config $DEFCONFIG not found!"
+              echo "Available configs in arch/arm64/configs/:"
+              find arch/arm64/configs/ -name "*defconfig"
+              exit 1
+          fi
+          
+          echo "Starting build with config: $CONF"
+          
+          # 1. Apply the configuration
+          make O=out "${MAKE_ARGS[@]}" $CONF
+
+          # 2. Main compilation process
+          make -j$(nproc --all) O=out "${MAKE_ARGS[@]}"
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-${{ github.event.inputs.kernel_ref }}
+          path: |
+            kernel-source/out/arch/arm64/boot/Image
+            kernel-source/out/arch/arm64/boot/Image.gz
+            kernel-source/out/arch/arm64/boot/dtbo.img
+            

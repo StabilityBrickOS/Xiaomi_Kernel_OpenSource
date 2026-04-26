@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       kernel_ref:
-        description: 'Branch from your fork (e.g., ares-r-oss or gold-s-oss)'
+        description: 'Branch (e.g., ares-r-oss or gold-s-oss)'
         required: true
         default: 'gold-s-oss'
       compiler_url:
